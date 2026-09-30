@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<style>
+  :root {
+    --accent: #a855f7;
+    --grad: linear-gradient(135deg, #3b82f6 0%, #a855f7 50%, #ec4899 100%);
+    --bg: rgba(12, 12, 18, 0.92);
+    --border: rgba(255, 255, 255, 0.15);
+    --text: #fff;
+    --muted: #9499b7;
+    --ease: cubic-bezier(0.25, 1, 0.5, 1);
+  }
+  
+  * { 
+    box-sizing: border-box; margin: 0; padding: 0; user-select: none; 
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; 
+  }
+  
+  /* ЖЁСТКАЯ ФИКСАЦИЯ РАЗМЕРОВ */
+  html, body { 
+    width: 360px; height: 140px; min-width: 360px; max-width: 360px; min-height: 140px; max-height: 140px;
+    overflow: hidden; background: transparent; position: relative;
+    -webkit-app-region: drag; 
+  }
+  
+  /* Отключаем перетаскивание на кнопках и ползунках */
+  button, input, .art, .seek-wrap, .vol-wrap, .controls, .close-btn, .meta { 
+    -webkit-app-region: no-drag; 
+  }
+
+  /* ПОЛЗУНКИ С КУРСОР-РУКОЙ */
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 100%; height: 100%;
+    background: transparent; margin: 0; outline: none; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,0.45); cursor: pointer;
+  }
+  .range-bg { position: relative; flex: 1; height: 6px; background: rgba(255,255,255,0.12); border-radius: 99px; cursor: pointer; }
+  .range-fill { position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: var(--grad); border-radius: 99px; pointer-events: none; }
+
+  /* БАЗОВАЯ ОБОЛОЧКА (Невидимый контейнер) */
+  .shell {
+    position: absolute;
+    z-index: 2;
+    display: flex; flex-direction: column;
+    padding: 12px 14px;
+    border-radius: 18px;
+    
+    transition: 
+      left 0.4s var(--ease), top 0.4s var(--ease),
+      width 0.4s var(--ease), height 0.4s var(--ease),
+      border-radius 0.4s var(--ease);
+  }
+
+  /* ФИЗИЧЕСКИЙ СЛОЙ (Стекло, идеальные тени) */
+  .shell-bg {
+    position: absolute; inset: 0; z-index: -2;
+    background: var(--bg);
+    backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px);
+    border: 1px solid var(--border);
+    border-radius: inherit;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+    transition: box-shadow 0.3s, border-color 0.3s;
+    overflow: hidden;
+  }
+
+  /* ТЕНЬ */
+  .shell-shadow {
+    position: absolute; inset: 0; z-index: -3;
+    background: rgba(0,0,0,0.65); filter: blur(14px);
+    border-radius: inherit; transform: scale(0.92) translateY(4px);
+    transition: inherit;
+  }
+
+  /* Слой Обоев */
+  .bg-layer {
+    position: absolute; inset: 0; z-index: -1;
+    background-size: cover; background-position: center;
+    opacity: 0; filter: blur(12px) brightness(0.7);
+    transition: background 0.5s ease, opacity 0.5s ease;
+  }
+
+  /* ==========================================================
+     РАЗВЁРНУТОЕ СОСТОЯНИЕ (HOVERED)
+     ========================================================== */
+  .shell.hovered {
+    left: 0 !important; top: 0 !important;
+    width: 360px !important; height: 140px !important; 
+    border-radius: 18px !important;
+  }
+  
+  .close-btn {
+    position: absolute; top: 10px; right: 12px;
+    width: 22px; height: 22px; border: none; border-radius: 50%;
+    background: rgba(255,255,255,0.08); color: #ccc; font-size: 11px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    z-index: 5; transition: 0.2s;
+  }
+  .close-btn:hover { background: #ff4757; color: #fff; }
+
+  .row { display: flex; align-items: center; gap: 12px; flex: 1; min-height: 0; margin-top: 4px; z-index: 2;}
+  
+  .art {
+    width: 50px; height: 50px; border-radius: 10px; flex-shrink: 0;
+    background: rgba(255,255,255,0.06); overflow: hidden;
+    border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+    transition: width 0.4s var(--ease), height 0.4s var(--ease), border-radius 0.4s var(--ease);
+  }
+  .art img { width: 100%; height: 100%; object-fit: cover; display: none; }
+  .art svg { opacity: 0.5; }
+
+  .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; transition: opacity 0.2s; z-index: 2;}
+  .title { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 20px;}
+  .artist { font-size: 11px; color: var(--accent); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; transition: opacity 0.2s; z-index: 2;}
+  .cbtn {
+    width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.06); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.15s;
+  }
+  .cbtn:hover { background: rgba(255,255,255,0.16); transform: scale(1.06); }
+  .cbtn.play { width: 36px; height: 36px; background: #fff; border: none; box-shadow: 0 4px 14px rgba(255,255,255,0.2); }
+  .cbtn.play:hover { transform: scale(1.08); }
+  .cbtn.play svg { fill: #0a0a0f; }
+
+  .bottom-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; transition: opacity 0.2s; z-index: 2;}
+  
+  .seek-wrap { display: flex; align-items: center; gap: 8px; flex: 1; }
+  .time { font-size: 10px; color: var(--muted); min-width: 28px; font-variant-numeric: tabular-nums; text-align: center;}
+  .vol-wrap { display: flex; align-items: center; gap: 6px; width: 75px; }
+  .vol-wrap svg { opacity: 0.7; }
+
+  /* ==========================================================
+     СВЁРНУТЫЕ СОСТОЯНИЯ (КРУГ ВО ВСЕХ 6 ЗОНАХ)
+     ========================================================== */
+     
+  .shell:not(.hovered) .close-btn,
+  .shell:not(.hovered) .meta,
+  .shell:not(.hovered) .controls,
+  .shell:not(.hovered) .bottom-row { display: none !important; opacity: 0; }
+
+  .shell:not(.hovered) { width: 58px; height: 58px; border-radius: 50%; padding: 4px; }
+  .shell:not(.hovered) .shell-bg { border-color: rgba(168, 85, 247, 0.4); }
+  .shell:not(.hovered) .shell-shadow { background: rgba(168, 85, 247, 0.5); filter: blur(12px); transform: scale(0.9); }
+  .shell:not(.hovered) .row { margin: 0; justify-content: center; height: 100%; gap: 0; }
+  .shell:not(.hovered) .art { width: 50px; height: 50px; border-radius: 50%; margin: 0; border: none; }
+
+  /* ИДЕАЛЬНАЯ МАТЕМАТИКА КООРДИНАТ ДЛЯ КРУГОВ (Ширина окна 360, Высота 140, Ширина круга 58) */
+  .shell.pos-tl:not(.hovered) { left: 8px; top: 8px; }
+  .shell.pos-tc:not(.hovered) { left: 151px; top: 8px; }   /* 360/2 - 58/2 = 180 - 29 = 151 */
+  .shell.pos-tr:not(.hovered) { left: 294px; top: 8px; }   /* 360 - 58 - 8 = 294 */
+  .shell.pos-bl:not(.hovered) { left: 8px; top: 74px; }    /* 140 - 58 - 8 = 74 */
+  .shell.pos-bc:not(.hovered) { left: 151px; top: 74px; }  /* Низ Центр */
+  .shell.pos-br:not(.hovered) { left: 294px; top: 74px; }  /* Низ Право */
+</style>
+</head>
+<body>
+  <div class="shell pos-tc" id="playerShell">
+    
+    <div class="shell-shadow"></div>
+    <div class="shell-bg">
+      <div id="miniBgLayer" class="bg-layer"></div>
+    </div>
+    
+    <button class="close-btn" id="closeBtn" title="Скрыть">✕</button>
+
+    <div class="row">
+      <div class="art" id="artBox">
+        <svg id="artPlaceholder" viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+        <img id="artImg" alt="">
+      </div>
+      <div class="meta">
+        <div class="title" id="titleText">Нет трека</div>
+        <div class="artist" id="artistText">—</div>
+      </div>
+      <div class="controls">
+        <button class="cbtn" id="prevBtn" title="Назад"><svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+        <button class="cbtn play" id="playBtn" title="Play/Pause">
+          <svg id="iconPlay" viewBox="0 0 24 24" width="16" height="16"><path d="M8 5v14l11-7z"/></svg>
+          <svg id="iconPause" viewBox="0 0 24 24" width="16" height="16" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+        </button>
+        <button class="cbtn" id="nextBtn" title="Вперёд"><svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+      </div>
+    </div>
+
+    <div class="bottom-row">
+      <div class="seek-wrap">
+        <span class="time" id="curTime">0:00</span>
+        <div class="range-bg">
+          <div class="range-fill" id="seekFill"></div>
+          <input type="range" id="seekRange" min="0" max="1000" value="0">
+        </div>
+        <span class="time" id="durTime">0:00</span>
+      </div>
+      <div class="vol-wrap">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+        <div class="range-bg" style="height:4px;">
+          <div class="range-fill" id="volFill" style="background:#fff;"></div>
+          <input type="range" id="volRange" min="0" max="100" value="80">
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const playerShell = document.getElementById('playerShell');
+  const titleText = document.getElementById('titleText');
+  const artistText = document.getElementById('artistText');
+  const artImg = document.getElementById('artImg');
+  const artPlaceholder = document.getElementById('artPlaceholder');
+  const iconPlay = document.getElementById('iconPlay');
+  const iconPause = document.getElementById('iconPause');
+  const seekFill = document.getElementById('seekFill');
+  const seekRange = document.getElementById('seekRange');
+  const volFill = document.getElementById('volFill');
+  const volRange = document.getElementById('volRange');
+  const miniBgLayer = document.getElementById('miniBgLayer');
+  const curTime = document.getElementById('curTime');
+  const durTime = document.getElementById('durTime');
+
+  let seeking = false;
+  let isHovered = false;
+  let isFlying = false;
+  let isDragging = false;
+  let currentPos = 'pos-tc'; // Центр по умолчанию
+  
+  let hoverTimeout = null;
+  let dragCheckTimer = null;
+  let lastWinX = window.screenX;
+  let lastWinY = window.screenY;
+
+  function fmt(sec) {
+    if (!isFinite(sec) || sec < 0) return '0:00';
+    const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function updateClasses() {
+    playerShell.classList.remove('pos-tl', 'pos-tr', 'pos-bl', 'pos-br', 'pos-tc', 'pos-bc', 'hovered');
+    playerShell.classList.add(currentPos);
+    if (isHovered) playerShell.classList.add('hovered');
+  }
+
+  // 6 ТОЧЕК НА ЭКРАНЕ
+  function getSnapPoints() {
+    const sx = window.screen.availLeft || 0;
+    const sy = window.screen.availTop || 0;
+    const sw = window.screen.availWidth;
+    const sh = window.screen.availHeight;
+    const winW = 360;
+    const winH = 140;
+
+    return {
+      'pos-tl': { x: sx, y: sy },
+      'pos-tc': { x: sx + (sw - winW) / 2, y: sy },
+      'pos-tr': { x: sx + sw - winW, y: sy },
+      'pos-bl': { x: sx, y: sy + sh - winH },
+      'pos-bc': { x: sx + (sw - winW) / 2, y: sy + sh - winH },
+      'pos-br': { x: sx + sw - winW, y: sy + sh - winH }
+    };
+  }
+
+  function getClosestSnap() {
+    const points = getSnapPoints();
+    let best = 'pos-tc';
+    let min = Infinity;
+    for (const [key, pt] of Object.entries(points)) {
+      const d = Math.hypot(window.screenX - pt.x, window.screenY - pt.y);
+      if (d < min) {
+        min = d;
+        best = key;
+      }
+    }
+    return { key: best, point: points[best] };
+  }
+
+  // СУПЕР ПЛАВНЫЙ ПОЛЁТ (Ease Out Quint)
+  function flyWindowTo(targetX, targetY) {
+    if (Math.abs(window.screenX - targetX) < 2 && Math.abs(window.screenY - targetY) < 2) return;
+
+    isFlying = true;
+    const startX = window.screenX;
+    const startY = window.screenY;
+    const start = performance.now();
+    const duration = 450; // Мягко и плавно
+
+    function easeOutQuint(t) { return 1 - Math.pow(1 - t, 5); }
+
+    function step(now) {
+      let p = (now - start) / duration;
+      if (p > 1) p = 1;
+      const e = easeOutQuint(p);
+      window.moveTo(
+        Math.round(startX + (targetX - startX) * e),
+        Math.round(startY + (targetY - startY) * e)
+      );
+      if (p < 1) {
+        requestAnimationFrame(step);
+      } else {
+        isFlying = false;
+        lastWinX = window.screenX;
+        lastWinY = window.screenY;
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  function performSnap() {
+    if (isHovered || isFlying || isDragging) return;
+    const snap = getClosestSnap();
+    currentPos = snap.key;
+    updateClasses();
+    flyWindowTo(snap.point.x, snap.point.y);
+  }
+
+  // ОТСЛЕЖИВАЕМ, ТАЩИТ ЛИ ПОЛЬЗОВАТЕЛЬ ОКНО
+  setInterval(() => {
+    if (isFlying) return;
+    
+    // Если окно сдвинулось - значит его тащит пользователь
+    if (window.screenX !== lastWinX || window.screenY !== lastWinY) {
+      isDragging = true;
+      lastWinX = window.screenX;
+      lastWinY = window.screenY;
+      
+      // Сбрасываем таймер "отпускания"
+      clearTimeout(dragCheckTimer);
+      // Если окно стоит на месте 300мс — значит пользователь отпустил мышку
+      dragCheckTimer = setTimeout(() => {
+        isDragging = false;
+        performSnap();
+      }, 300);
+    }
+  }, 30);
+
+  // ХОВЕР МЫШИ (НЕ ДАЁТ СВОРАЧИВАТЬСЯ)
+  document.addEventListener('mouseover', () => {
+    clearTimeout(hoverTimeout);
+    isHovered = true;
+    updateClasses();
+  });
+
+  // КОГДА МЫШЬ УХОДИТ С ОКНА ПОЛНОСТЬЮ
+  document.addEventListener('mouseout', (e) => {
+    if (e.relatedTarget === null || e.relatedTarget.nodeName === 'HTML') {
+      clearTimeout(hoverTimeout);
+      hoverTimeout = setTimeout(() => {
+        isHovered = false;
+        updateClasses();
+        // Запускаем магнит только если мы не тащим окно
+        setTimeout(performSnap, 100);
+      }, 200);
+    }
+  });
+
+  // ДАННЫЕ ПЛЕЕРА
+  if (window.vibeAPI?.onMiniUpdate) {
+    window.vibeAPI.onMiniUpdate((data) => {
+      if (!data) return;
+      if (data.title != null) titleText.textContent = data.title || 'Нет трека';
+      if (data.author != null) artistText.textContent = data.author || '—';
+
+      if (data.artwork) {
+        artImg.src = data.artwork; artImg.style.display = 'block'; artPlaceholder.style.display = 'none';
+      } else if (data.artwork === null) {
+        artImg.style.display = 'none'; artPlaceholder.style.display = 'block';
+      }
+
+      if (typeof data.playing === 'boolean') {
+        iconPlay.style.display = data.playing ? 'none' : 'block';
+        iconPause.style.display = data.playing ? 'block' : 'none';
+      }
+
+      if (!seeking && data.progress != null) {
+        const p = Math.max(0, Math.min(1000, Math.round(data.progress * 10)));
+        seekRange.value = p; seekFill.style.width = (p / 10) + '%';
+      }
+      if (data.current != null) curTime.textContent = fmt(data.current);
+      if (data.duration != null) durTime.textContent = fmt(data.duration);
+
+      if (data.volume != null) {
+        volRange.value = data.volume; volFill.style.width = data.volume + '%';
+      }
+
+      if (data.miniBg !== undefined) {
+        if (data.miniBg) {
+          miniBgLayer.style.backgroundImage = `url("${data.miniBg}")`; miniBgLayer.style.opacity = '0.6';
+        } else {
+          miniBgLayer.style.opacity = '0';
+        }
+      }
+    });
+  }
+
+  // КНОПКИ
+  document.getElementById('closeBtn').onclick = () => {
+    if (window.vibeAPI?.miniControl) window.vibeAPI.miniControl('sync-close');
+    if (window.vibeAPI?.miniClose) window.vibeAPI.miniClose();
+  };
+  document.getElementById('prevBtn').onclick = () => window.vibeAPI?.miniControl?.('prev');
+  document.getElementById('nextBtn').onclick = () => window.vibeAPI?.miniControl?.('next');
+  document.getElementById('playBtn').onclick = () => window.vibeAPI?.miniControl?.('toggle');
+
+  seekRange.addEventListener('mousedown', () => seeking = true);
+  seekRange.addEventListener('input', () => seekFill.style.width = (Number(seekRange.value) / 10) + '%');
+  seekRange.addEventListener('change', () => { window.vibeAPI?.miniControl?.('seek', Number(seekRange.value) / 10); seeking = false; });
+  window.addEventListener('mouseup', () => seeking = false);
+
+  volRange.addEventListener('input', () => {
+    const v = Number(volRange.value);
+    volFill.style.width = v + '%';
+    window.vibeAPI?.miniControl?.('volume', v);
+  });
+
+  // Запуск
+  updateClasses();
+  setTimeout(performSnap, 300);
+</script>
+</body>
+</html>
